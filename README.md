@@ -1,4 +1,4 @@
-# stock-monitoring-agent-backend
+# Stock Monitoring Agent Backend
 
 ```text
 stock-agent-backend/
@@ -17,79 +17,69 @@ stock-agent-backend/
 ├── package.json
 └── README.md
 
-Gemini said
-To build a personalized AI agent that mirrors the logic of a high-end service like the one you saw, you need a modular backend. Below is a clean, production-ready repository structure using Node.js (JavaScript/TypeScript).
+---
 
-This setup uses a "Controller-Service" pattern, which is the industry standard for keeping your AI logic separate from your data fetching.
+### 2. The JavaScript Code (The Backend)
+Here is the actual code you should write for each file to make the agent functional.
 
-
-1. The "Brain": src/agents/researchAgent.js
-This file handles the communication with Gemini. It takes raw news and turns it into a "personalized" summary.
-
-JavaScript
+#### **The AI Agent** (`src/agents/researchAgent.js`)
+This uses Gemini 3.1 Pro to analyze the "noise" and find the "signal."
+```javascript
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-export const generatePersonalizedReport = async (userData, rawNews) => {
+export const analyzeMarketData = async (ticker, data) => {
   const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro" });
-
-  const prompt = `
-    You are a private equity analyst. 
-    User Portfolio: ${userData.watchlist.join(", ")}
-    Raw Data: ${JSON.stringify(rawNews)}
-    
-    Task: Create a 'Signal-to-Noise' report. 
-    1. Filter out general market fluff.
-    2. Focus only on events impacting the user's specific stocks.
-    3. Format the output in clean HTML for an email newsletter.
-    4. Include a 'Key Takeaway' section for each ticker.
-  `;
+  
+  const prompt = `Analyze these recent headlines for ${ticker}: ${JSON.stringify(data)}. 
+  Write a 2-sentence summary for a premium subscriber. 
+  Focus on future price catalysts.`;
 
   const result = await model.generateContent(prompt);
   return result.response.text();
 };
-2. The "Senses": src/services/newsService.js
-You need to gather data before the AI can analyze it. This script fetches the latest earnings and news.
+The News Fetcher (src/services/newsService.js)
+This gathers the raw information.
 
 JavaScript
 import axios from 'axios';
 
-export const getMarketData = async (tickers) => {
-  // Replace with actual API endpoints like Polygon.io or AlphaVantage
-  const API_KEY = process.env.MARKET_DATA_KEY;
-  
-  const newsPromises = tickers.map(ticker => 
-    axios.get(`https://api.marketdata.com/v1/news/${ticker}?apikey=${API_KEY}`)
-  );
-
-  const results = await Promise.all(newsPromises);
-  return results.map(res => res.data);
+export const fetchStockNews = async (ticker) => {
+  // Using a standard News API as an example
+  const response = await axios.get(`https://newsapi.org/v2/everything?q=${ticker}&apiKey=${process.env.NEWS_KEY}`);
+  return response.data.articles.slice(0, 5); // Return top 5 stories
 };
-3. The Orchestrator: src/app.js
-This ties everything together. It "wakes up," gets data, asks the AI to think, and sends the result.
+The Stripe Logic (src/routes/subscription.js)
+This implements the $1 for the first month marketing strategy you mentioned.
 
 JavaScript
-import { getMarketData } from './services/newsService.js';
-import { generatePersonalizedReport } from './agents/researchAgent.js';
-import { sendEmail } from './services/mailService.js';
+import Stripe from 'stripe';
+const stripe = new Stripe(process.env.STRIPE_KEY);
 
-const runDailyAgent = async (user) => {
-  try {
-    console.log(`Starting run for ${user.email}...`);
-    
-    // 1. Fetch
-    const rawData = await getMarketData(user.watchlist);
-    
-    // 2. Analyze (Gemini 3.1 Pro)
-    const formattedNewsletter = await generatePersonalizedReport(user, rawData);
-    
-    // 3. Deliver
-    await sendEmail(user.email, "Your Daily Decoded Insights", formattedNewsletter);
-    
-    console.log("Newsletter sent successfully!");
-  } catch (error) {
-    console.error("Agent failed:", error);
-  }
+export const createTrialSubscription = async (email) => {
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [{ price: 'PRICE_ID_FOR_5_DOLLARS', quantity: 1 }],
+    mode: 'subscription',
+    subscription_data: {
+      trial_period_days: 30, // The first month is handled by the trial/initial fee
+      // You would charge the $1 upfront and then $5 after 30 days
+    },
+    success_url: 'https://decoded.fm/success',
+  });
+  return session.url;
 };
-AI agent architecture diagram, AI generated
+3. How to "Bold" and Style the Email (src/templates/newsletter.html)
+To make the email look like the professional "Decoded" site, use simple HTML/CSS:
+
+HTML
+<div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee;">
+  <h2 style="color: #1a1a1a;">Daily Market Decode</h2>
+  <hr>
+  <p><strong>{{ticker}} Analysis:</strong></p>
+  <p style="line-height: 1.6; color: #444;">{{ai_generated_insight}}</p>
+  <footer style="font-size: 12px; color: #888;">
+    You are receiving this as part of your $5/mo premium subscription.
+  </footer>
+</div>
